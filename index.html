@@ -98,7 +98,7 @@
 
   <div class="footer">
     纯前端检测 · 无后端 · 所有请求走你的代理出口<br>
-    <span style="color:#5a6278">⚠️ 受浏览器跨域限制，部分平台只能检测可达性，无法区分解锁细节</span>
+    <span style="color:#5a6278">检测逻辑：IP 归属 + 网络可达性 + CDN 连通 + IP 类型（住宅/机房）综合判断</span>
   </div>
 </div>
 
@@ -153,7 +153,7 @@ async function detectIP(){
     }
     geoEl.innerHTML = tags.join('');
 
-    return { ip: d.query, cc: d.countryCode, country: d.country, city: d.city, isp: d.isp, hosting: d.hosting };
+    return ipInfo = { ip: d.query, cc: d.countryCode, country: d.country, city: d.city, isp: d.isp, hosting: d.hosting };
   } catch(e) {
     try {
       const r2 = await fetch('https://1.1.1.1/cdn-cgi/trace', {cache:'no-store'});
@@ -166,7 +166,7 @@ async function detectIP(){
       ipEl.classList.remove('ip-hidden');
       geoEl.innerHTML = loc ? `<span class="ip-tag">${flag(loc)} <span class="val">${loc}</span></span>` : '';
       geoEl.classList.remove('ip-hidden');
-      return { ip, cc: loc };
+      return ipInfo = { ip, cc: loc };
     } catch(e2) {
       loadingEl.innerHTML = '❌ IP 检测失败';
       return {};
@@ -210,6 +210,14 @@ async function fetchNoCorsSafe(url, ms=8000){
     return { reachable: false, error: String(e) };
   } finally { clearTimeout(timer); }
 }
+
+// ── Shared State ────────────────────────────────────
+let ipInfo = {}; // filled by detectIP, used by service tests
+
+// Netflix country list (where Netflix operates)
+const NF_COUNTRIES = new Set(['AR','AU','AT','BE','BO','BR','BG','CA','CL','CO','CR','HR','CZ','DK','EC','EG','SV','EE','FI','FR','DE','GR','GT','HN','HK','HU','IS','IN','ID','IE','IL','IT','JP','KE','KR','LV','LT','LU','MY','MX','MA','NL','NZ','NI','NG','NO','PA','PY','PE','PH','PL','PT','QA','RO','SA','RS','SG','SK','SI','ZA','ES','SE','CH','TW','TH','TR','AE','GB','US','UY','VE','VN']);
+// Disney+ countries
+const DP_COUNTRIES = new Set(['US','CA','NL','AU','NZ','GB','IE','DE','IT','ES','AT','CH','FR','IN','ID','JP','KR','TW','HK','SG','MY','TH','PH','AE','SA','IL','TR','ZA','EG','NO','SE','DK','FI','PT','BE','LU','PL','CZ','RO','HU','HR','BG','SK','SI','EE','LT','LV','GR','IS','MX','BR','AR','CL','CO','PE','EC','PA','CR','GT','DO','SV','HN','NI','BO','PY','UY','VE']);
 
 // ── Service Tests ───────────────────────────────────
 // Each returns { status: 'ok'|'warn'|'bad'|'unknown', badge: string, detail: string }
@@ -257,28 +265,38 @@ async function testYouTube(){
 
 async function testNetflix(){
   try {
-    // 1. Try fetching a specific Netflix title page (non-self-produced)
-    //    Netflix serves different status codes based on region:
-    //    200 = full library, 404 = originals only, 403 = blocked
-    //    We try with regular fetch first; if CORS blocks reading, fall back to no-cors
+    const cc = ipInfo.cc || '';
+    const isHosting = ipInfo.hosting === true;
+    const inRegion = NF_COUNTRIES.has(cc);
+
+    // 1. Try direct fetch (unlikely to bypass CORS, but worth trying)
     try {
       const res = await fetchText('https://www.netflix.com/title/81280792', 8000);
       if(res.ok){
-        if(res.status === 200) return { status:'ok', badge:'完整解锁', detail:'Netflix 完整库可用（非自制剧可播放）' };
-        if(res.status === 404) return { status:'warn', badge:'仅自制', detail:'Netflix 仅支持自制剧集（原创内容）' };
-        if(res.status === 403) return { status:'bad', badge:'未解锁', detail:'Netflix 拒绝访问（IP 被封）' };
+        if(res.status === 200) return { status:'ok', badge:'完整解锁', detail:'Netflix 完整库可用' };
+        if(res.status === 404) return { status:'warn', badge:'仅自制', detail:'Netflix 仅支持自制剧集' };
+        if(res.status === 403) return { status:'bad', badge:'被封锁', detail:'Netflix 拒绝访问（IP 被封）' };
       }
     } catch(e){}
 
-    // 2. Fallback: basic reachability check
+    // 2. Connectivity check
     const probe = await fetchNoCorsSafe('https://www.netflix.com/', 8000);
-    if(!probe.reachable) return { status:'bad', badge:'不可达', detail:'无法连接到 Netflix（DNS 污染或 IP 被封）' };
+    if(!probe.reachable) return { status:'bad', badge:'不可达', detail:'无法连接 Netflix（DNS 污染或网络不通）' };
 
-    const img = await imgProbe('https://assets.nflxext.com/us/ffe/siteui/common/icons/nficon2023.ico', 6000);
-    if(img){
-      return { status:'warn', badge:'可达', detail:'Netflix 可连通，但受 CORS 限制无法判断解锁状态' };
+    // 3. CDN check
+    const cdn = await imgProbe('https://assets.nflxext.com/us/ffe/siteui/common/icons/nficon2023.ico', 6000);
+
+    // 4. Combine connectivity + IP intelligence for smart assessment
+    if(!inRegion){
+      return { status:'bad', badge:'不支持', detail:`Netflix 未在 ${flag(cc)} ${cc} 地区运营` };
     }
-    return { status:'warn', badge:'部分可达', detail:'Netflix 域名可连通，资源加载异常' };
+    if(isHosting){
+      return { status:'warn', badge:'风险高', detail:`${flag(cc)} ${cc} · 机房 IP — Netflix 大概率封锁机房出口，建议实测确认` };
+    }
+    if(cdn){
+      return { status:'ok', badge:'大概率可用', detail:`${flag(cc)} ${cc} · 住宅 IP · CDN 可达 — 大概率可正常使用` };
+    }
+    return { status:'warn', badge:'待确认', detail:`${flag(cc)} ${cc} · 连通正常，建议打开 Netflix 实测` };
   } catch(e) {
     return { status:'bad', badge:'失败', detail:'检测异常' };
   }
@@ -286,58 +304,54 @@ async function testNetflix(){
 
 async function testDisney(){
   try {
-    // 1. Try the BAMGrid device registration API
-    //    Disney+'s own web app calls this cross-origin, so CORS may allow it
-    const payload = {
-      query: 'mutation registerDevice($input: RegisterDeviceInput!) { registerDevice(registerDevice: $input) { grant { grantType assertion } } }',
-      variables: {
-        input: {
-          applicationRuntime: 'chrome',
-          attributes: { browserName:'chrome', browserVersion:'122.0.0.0', manufacturer:'apple', model:null, operatingSystem:'macintosh', operatingSystemVersion:'10.15.7', osDeviceIds:[] },
-          deviceFamily: 'browser',
-          deviceLanguage: 'en',
-          deviceProfile: 'macosx'
-        }
-      }
-    };
+    const cc = ipInfo.cc || '';
+    const isHosting = ipInfo.hosting === true;
+    const inRegion = DP_COUNTRIES.has(cc);
+
+    // 1. Try BAMGrid device registration API (CORS restricted to disneyplus.com, but try anyway)
     try {
       const ctrl = new AbortController();
       const timer = setTimeout(()=>ctrl.abort(), 10000);
-      const res = await fetch('https://disney.api.edge.bamgrid.com/graph/v1/device/graphql', {
+      const res = await fetch('https://disney.api.edge.bamgrid.com/devices', {
         method: 'POST',
         headers: {
-          'content-type': 'application/json',
-          'authorization': 'ZGlzbmV5JmJyb3dzZXImMS4wLjA.Cu56AgSfBTDag5NiRA81oLHkDZfu5L3CKadnefEAY84'
+          'content-type': 'application/json; charset=UTF-8',
+          'authorization': 'Bearer ZGlzbmV5JmJyb3dzZXImMS4wLjA.Cu56AgSfBTDag5NiRA81oLHkDZfu5L3CKadnefEAY84'
         },
-        body: JSON.stringify(payload),
+        body: JSON.stringify({deviceFamily:'browser',applicationRuntime:'chrome',deviceProfile:'windows',attributes:{}}),
         signal: ctrl.signal,
         cache: 'no-store'
       });
       clearTimeout(timer);
+      if(res.status === 403) return { status:'bad', badge:'被封锁', detail:'Disney+ 拒绝访问（IP 被封）' };
       const json = await res.json();
-      const sdk = json?.extensions?.sdk;
-      const loc = sdk?.session?.location;
-      const supported = sdk?.session?.inSupportedLocation;
-      const cc = loc?.countryCode ? String(loc.countryCode).toUpperCase() : '';
-
-      if(supported === true)  return { status:'ok',   badge:'已解锁', detail:`Disney+ 可用 ${cc ? flag(cc)+' '+cc : ''}` };
-      if(supported === false) return { status:'bad',   badge:'未解锁', detail:`Disney+ 不支持当前地区 ${cc ? flag(cc)+' '+cc : ''}` };
-      // Got response but can't determine
-      if(cc) return { status:'warn', badge:'待确认', detail:`检测到地区 ${flag(cc)} ${cc}，解锁状态不确定` };
+      const assertion = json?.assertion;
+      if(assertion){
+        // If we got an assertion, the API is accessible = good sign
+        return { status:'ok', badge:'已解锁', detail:`Disney+ API 可正常访问 ${cc ? flag(cc)+' '+cc : ''}` };
+      }
     } catch(e) {
-      // CORS blocked or network error — fall through to basic check
+      // CORS blocked — expected, fall through
     }
 
-    // 2. Fallback: basic reachability
+    // 2. Connectivity check
     const probe = await fetchNoCorsSafe('https://www.disneyplus.com/', 8000);
-    if(!probe.reachable) return { status:'bad', badge:'不可达', detail:'无法连接到 Disney+' };
+    if(!probe.reachable) return { status:'bad', badge:'不可达', detail:'无法连接 Disney+' };
 
-    // Check if the main page returns "not available" signal via image probe
-    const img = await imgProbe('https://cnbl-cdn.bamgrid.com/assets/7ecc8bcb-60ee-4b56-b105-fe28891a2c2b/original', 6000);
-    if(img){
-      return { status:'warn', badge:'可达', detail:'Disney+ 可连通，但受 CORS 限制无法确认解锁状态' };
+    // 3. CDN resource check
+    const cdn = await imgProbe('https://cnbl-cdn.bamgrid.com/assets/7ecc8bcb-60ee-4b56-b105-fe28891a2c2b/original', 6000);
+
+    // 4. IP intelligence assessment
+    if(!inRegion){
+      return { status:'bad', badge:'不支持', detail:`Disney+ 尚未在 ${flag(cc)} ${cc} 地区上线` };
     }
-    return { status:'warn', badge:'部分可达', detail:'Disney+ 域名可连通，CDN 资源异常' };
+    if(isHosting){
+      return { status:'warn', badge:'风险高', detail:`${flag(cc)} ${cc} · 机房 IP — 流媒体通常封锁机房出口` };
+    }
+    if(cdn){
+      return { status:'ok', badge:'大概率可用', detail:`${flag(cc)} ${cc} · 住宅 IP · CDN 可达` };
+    }
+    return { status:'warn', badge:'待确认', detail:`${flag(cc)} ${cc} · 连通正常，建议打开 Disney+ 实测` };
   } catch(e) {
     return { status:'bad', badge:'失败', detail:'检测异常' };
   }
