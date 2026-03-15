@@ -433,13 +433,50 @@ function formatReport() {
   ].join('\n');
 }
 
+function escapeHtml(s) {
+  return String(s || '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function formatHtmlReport() {
+  const order = ['YouTube Premium', 'Netflix', 'Disney+', 'DAZN', 'Paramount+', 'Discovery+', 'ChatGPT'];
+  const lines = order.map(k => (RESULT.items[k] && RESULT.items[k].text) || `${k}: 未执行`);
+  return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>${escapeHtml(RESULT.title)}</title>
+<style>
+body { font-family: -apple-system, BlinkMacSystemFont, SF Pro Text, Helvetica, Arial, sans-serif; background:#0f1115; color:#e8eaed; padding:20px; line-height:1.65; }
+.card { max-width: 820px; margin: 0 auto; background:#171a21; border:1px solid #2a2f3a; border-radius:16px; padding:20px; box-shadow: 0 10px 30px rgba(0,0,0,.25); }
+h1 { font-size: 22px; margin:0 0 12px; }
+.pre { white-space: pre-wrap; font-size: 15px; }
+.tip { color:#9aa4b2; font-size: 13px; margin-top: 16px; }
+code { background:#0f1115; padding:2px 6px; border-radius:6px; }
+</style>
+</head>
+<body>
+  <div class="card">
+    <h1>${escapeHtml(RESULT.title)}</h1>
+    <div class="pre">${escapeHtml(lines.join('\n\n'))}</div>
+    <div class="tip">Version: ${escapeHtml(VERSION)}<br>如果你是通过 Shadowrocket 触发本页，重新打开 <code>https://media-check.shadowrocket/test</code> 即可再次检测。</div>
+  </div>
+</body>
+</html>`;
+}
+
 function notify(title, subtitle, message) {
   if (typeof $notification !== 'undefined' && $notification.post) {
     $notification.post(title, subtitle || '', message || '');
   }
 }
 
-async function main() {
+async function runAllChecks() {
   const tasks = [
     testYouTubePremium(),
     testNetflix(),
@@ -449,9 +486,27 @@ async function main() {
     testDiscoveryPlus(),
     testChatGPT()
   ];
-
   await Promise.all(tasks.map(p => Promise.resolve(p).catch(e => e)));
+}
+
+async function main() {
+  await runAllChecks();
   const report = formatReport();
+
+  if (typeof $request !== 'undefined' && $request && $request.url) {
+    notify(RESULT.title, '检测完成', report);
+    return $done({
+      response: {
+        status: 200,
+        headers: {
+          'Content-Type': 'text/html; charset=utf-8',
+          'Cache-Control': 'no-store'
+        },
+        body: formatHtmlReport()
+      }
+    });
+  }
+
   notify(RESULT.title, '检测完成', report);
   $done({ title: RESULT.title, content: report });
 }
@@ -459,5 +514,14 @@ async function main() {
 main().catch((e) => {
   const msg = `脚本异常: ${String(e && e.stack || e)}`;
   notify(RESULT.title, '检测异常', msg);
+  if (typeof $request !== 'undefined' && $request && $request.url) {
+    return $done({
+      response: {
+        status: 500,
+        headers: { 'Content-Type': 'text/plain; charset=utf-8' },
+        body: msg
+      }
+    });
+  }
   $done({ title: RESULT.title, content: msg });
 });
