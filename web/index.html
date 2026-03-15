@@ -140,7 +140,8 @@ async function detectIP(){
     ipEl.style.color = '';
 
     let tags = [];
-    tags.push(`<span class="ip-tag">${flag(d.countryCode)} <span class="val">${d.country}</span></span>`);
+    const countryName = (d.country && d.country !== d.countryCode) ? d.country : d.countryCode;
+    tags.push(`<span class="ip-tag">${flag(d.countryCode)} <span class="val">${countryName}</span></span>`);
     if(d.city) tags.push(`<span class="ip-tag">📍 <span class="val">${d.city}</span></span>`);
     if(d.isp) tags.push(`<span class="ip-tag">🏢 <span class="val">${d.isp}</span></span>`);
     if(d.as) tags.push(`<span class="ip-tag">🔗 <span class="val">${d.as.split(' ')[0]}</span></span>`);
