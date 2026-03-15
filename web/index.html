@@ -89,7 +89,9 @@ const SERVICES = [
 ];
 
 const FLAGS = {'AE':'🇦🇪','AR':'🇦🇷','AU':'🇦🇺','BR':'🇧🇷','CA':'🇨🇦','CH':'🇨🇭','CN':'🇨🇳','DE':'🇩🇪','DK':'🇩🇰','ES':'🇪🇸','FI':'🇫🇮','FR':'🇫🇷','GB':'🇬🇧','HK':'🇭🇰','ID':'🇮🇩','IE':'🇮🇪','IN':'🇮🇳','IT':'🇮🇹','JP':'🇯🇵','KR':'🇰🇷','MX':'🇲🇽','MY':'🇲🇾','NL':'🇳🇱','NO':'🇳🇴','NZ':'🇳🇿','PH':'🇵🇭','PL':'🇵🇱','PT':'🇵🇹','RU':'🇷🇺','SA':'🇸🇦','SE':'🇸🇪','SG':'🇸🇬','TH':'🇹🇭','TR':'🇹🇷','TW':'🇹🇼','UA':'🇺🇦','US':'🇺🇸','VN':'🇻🇳','ZA':'🇿🇦'};
-function flag(cc){ return cc ? (FLAGS[cc.toUpperCase()] || '🏳️') : ''; }
+const COUNTRY_ZH = {'AE':'阿联酋','AR':'阿根廷','AU':'澳大利亚','BR':'巴西','CA':'加拿大','CH':'瑞士','CN':'中国','DE':'德国','DK':'丹麦','ES':'西班牙','FI':'芬兰','FR':'法国','GB':'英国','HK':'香港','ID':'印尼','IE':'爱尔兰','IN':'印度','IT':'意大利','JP':'日本','KR':'韩国','MX':'墨西哥','MY':'马来西亚','NL':'荷兰','NO':'挪威','NZ':'新西兰','PH':'菲律宾','PL':'波兰','PT':'葡萄牙','RU':'俄罗斯','SA':'沙特','SE':'瑞典','SG':'新加坡','TH':'泰国','TR':'土耳其','TW':'台湾','UA':'乌克兰','US':'美国','VN':'越南','ZA':'南非'};
+function flag(cc){ return cc ? (FLAGS[cc.toUpperCase()] || '') : ''; }
+function countryName(cc){ return cc ? (COUNTRY_ZH[cc.toUpperCase()] || cc) : ''; }
 
 // ── Helpers ──────────────────────────────────────────
 async function fetchWithTimeout(url, opts={}, ms=6000){
@@ -132,21 +134,19 @@ async function detectIP(){
   const geoEl = document.getElementById('ipGeo');
 
   try {
-    const r = await fetch('http://ip-api.com/json/?fields=status,query,country,countryCode,regionName,city,isp,as,hosting&lang=zh-CN', {cache:'no-store'});
+    // ipinfo.io: HTTPS + CORS supported
+    const r = await fetch('https://ipinfo.io/json', {cache:'no-store'});
     const d = await r.json();
-    if(d.status !== 'success') throw new Error('fail');
+    if(!d.ip) throw new Error('no ip');
 
-    ipEl.textContent = d.query;
+    const cc = (d.country||'').toUpperCase();
+    ipEl.textContent = d.ip;
     ipEl.style.color = '';
 
     let tags = [];
-    const countryName = (d.country && d.country !== d.countryCode) ? d.country : d.countryCode;
-    tags.push(`<span class="ip-tag">${flag(d.countryCode)} <span class="val">${countryName}</span></span>`);
+    tags.push(`<span class="ip-tag">${flag(cc)} <span class="val">${countryName(cc)}</span></span>`);
     if(d.city) tags.push(`<span class="ip-tag">📍 <span class="val">${d.city}</span></span>`);
-    if(d.isp) tags.push(`<span class="ip-tag">🏢 <span class="val">${d.isp}</span></span>`);
-    if(d.as) tags.push(`<span class="ip-tag">🔗 <span class="val">${d.as.split(' ')[0]}</span></span>`);
-    if(d.hosting === true) tags.push(`<span class="ip-tag dc">⚠️ 机房 IP</span>`);
-    else if(d.hosting === false) tags.push(`<span class="ip-tag res">✅ 住宅 IP</span>`);
+    if(d.org) tags.push(`<span class="ip-tag">🏢 <span class="val">${d.org.replace(/^AS\d+\s*/,'')}</span></span>`);
     geoEl.innerHTML = tags.join('');
   } catch(e) {
     // fallback: cloudflare trace
@@ -173,8 +173,8 @@ async function testChatGPT(){
   if(!res.ok) return { status:'bad', badge:'不可达', detail:'无法连接 ChatGPT' };
   const loc = (res.body.match(/loc=([A-Z]{2})/)||[])[1]||'';
   const blocked = new Set(['CN','RU','KP','IR','CU','SY','BY']);
-  if(blocked.has(loc)) return { status:'bad', badge:'不可用', detail:`出口 ${flag(loc)} ${loc}，在 OpenAI 封禁名单` };
-  if(loc) return { status:'ok', badge:'可用', detail:`出口 ${flag(loc)} ${loc}` };
+  if(blocked.has(loc)) return { status:'bad', badge:'不可用', detail:`出口 ${flag(loc)} ${countryName(loc)}，在 OpenAI 封禁名单` };
+  if(loc) return { status:'ok', badge:'可用', detail:`出口 ${flag(loc)} ${countryName(loc)}` };
   return { status:'warn', badge:'可达', detail:'已连通，未检测到地区' };
 }
 
