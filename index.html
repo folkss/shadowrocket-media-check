@@ -57,9 +57,11 @@
     .footer{text-align:center;padding:24px 0;color:#4a5268;font-size:11px;line-height:1.6}
     .footer a{color:#4f7cff;text-decoration:none}
 
-    /* Skeleton */
-    .skeleton .ip-value{background:#1e2642;color:transparent;border-radius:8px;display:inline-block;width:200px;height:30px}
-    .skeleton .ip-tag .val{background:#1e2642;color:transparent;border-radius:4px;display:inline-block;width:40px}
+    /* Loading pulse */
+    @keyframes pulse{0%,100%{opacity:.4}50%{opacity:1}}
+    .ip-loading{color:#4f7cff;font-size:15px;animation:pulse 1.5s ease-in-out infinite;display:flex;align-items:center;gap:8px}
+    .ip-loading svg{width:18px;height:18px;animation:spin 1s linear infinite;flex-shrink:0}
+    .ip-hidden{display:none}
 
     @media(prefers-color-scheme:light){
       /* keep dark — this is a tool page */
@@ -73,12 +75,14 @@
     <p>检测你当前代理节点的出口 IP 和流媒体可达性。<br>所有请求由浏览器直接发出，走你当前的代理线路。</p>
   </div>
 
-  <div class="ip-card skeleton" id="ipCard">
+  <div class="ip-card" id="ipCard">
     <div class="ip-label">当前出口 IP</div>
-    <div class="ip-value" id="ipAddr">检测中…</div>
-    <div class="ip-geo" id="ipGeo">
-      <span class="ip-tag"><span class="val">&nbsp;</span></span>
+    <div class="ip-loading" id="ipLoading">
+      <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16z" opacity=".3"/><path d="M12 2a10 10 0 0 1 10 10h-2a8 8 0 0 0-8-8V2z"/></svg>
+      点击「开始检测」获取出口信息
     </div>
+    <div class="ip-value ip-hidden" id="ipAddr"></div>
+    <div class="ip-geo ip-hidden" id="ipGeo"></div>
   </div>
 
   <div class="action">
@@ -89,7 +93,7 @@
     <div class="timer" id="timer"></div>
   </div>
 
-  <div class="section-title">流媒体 &amp; AI 服务</div>
+  <div class="section-title ip-hidden" id="resultsTitle">流媒体 &amp; AI 服务</div>
   <div class="results" id="results"></div>
 
   <div class="footer">
@@ -119,22 +123,29 @@ async function detectIP(){
   const card = document.getElementById('ipCard');
   const ipEl = document.getElementById('ipAddr');
   const geoEl = document.getElementById('ipGeo');
+  const loadingEl = document.getElementById('ipLoading');
+
+  // Show loading state
+  loadingEl.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2a10 10 0 0 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16z" opacity=".3"/><path d="M12 2a10 10 0 0 1 10 10h-2a8 8 0 0 0-8-8V2z"/></svg> 正在检测出口 IP…';
+  loadingEl.classList.remove('ip-hidden');
+  ipEl.classList.add('ip-hidden');
+  geoEl.classList.add('ip-hidden');
 
   try {
-    // ip-api.com supports CORS on http (not https on free tier)
     const r = await fetch('http://ip-api.com/json/?fields=status,query,country,countryCode,regionName,city,isp,as,hosting&lang=zh-CN', {cache:'no-store'});
     const d = await r.json();
     if(d.status !== 'success') throw new Error('ip-api failed');
 
-    card.classList.remove('skeleton');
+    loadingEl.classList.add('ip-hidden');
     ipEl.textContent = d.query;
+    ipEl.classList.remove('ip-hidden');
+    geoEl.classList.remove('ip-hidden');
 
     let tags = [];
     tags.push(`<span class="ip-tag">${flag(d.countryCode)} <span class="val">${d.country}</span></span>`);
     if(d.city) tags.push(`<span class="ip-tag">📍 <span class="val">${d.city}</span></span>`);
     if(d.isp) tags.push(`<span class="ip-tag">🏢 <span class="val">${d.isp}</span></span>`);
     if(d.as) tags.push(`<span class="ip-tag">🔗 <span class="val">${d.as.split(' ')[0]}</span></span>`);
-    // hosting flag: true = datacenter IP, false = residential
     if(d.hosting === true) {
       tags.push(`<span class="ip-tag dc">⚠️ 机房 IP</span>`);
     } else if(d.hosting === false) {
@@ -144,20 +155,20 @@ async function detectIP(){
 
     return { ip: d.query, cc: d.countryCode, country: d.country, city: d.city, isp: d.isp, hosting: d.hosting };
   } catch(e) {
-    // Fallback: use Cloudflare trace
     try {
       const r2 = await fetch('https://1.1.1.1/cdn-cgi/trace', {cache:'no-store'});
       const txt = await r2.text();
       const ip = (txt.match(/ip=(.+)/)||[])[1]||'';
       const loc = (txt.match(/loc=([A-Z]{2})/)||[])[1]||'';
-      card.classList.remove('skeleton');
+
+      loadingEl.classList.add('ip-hidden');
       ipEl.textContent = ip || '未知';
+      ipEl.classList.remove('ip-hidden');
       geoEl.innerHTML = loc ? `<span class="ip-tag">${flag(loc)} <span class="val">${loc}</span></span>` : '';
+      geoEl.classList.remove('ip-hidden');
       return { ip, cc: loc };
     } catch(e2) {
-      card.classList.remove('skeleton');
-      ipEl.textContent = '检测失败';
-      geoEl.innerHTML = '';
+      loadingEl.innerHTML = '❌ IP 检测失败';
       return {};
     }
   }
@@ -420,6 +431,9 @@ async function runAll(){
 
   renderInitial();
 
+  // Show results section
+  document.getElementById('resultsTitle').classList.remove('ip-hidden');
+
   // 1. IP detection first
   await detectIP();
 
@@ -448,8 +462,7 @@ const style = document.createElement('style');
 style.textContent = '@keyframes spin{to{transform:rotate(360deg)}}';
 document.head.appendChild(style);
 
-// Init
-renderInitial();
+// Init — clean state, nothing shown until user clicks
 </script>
 </body>
 </html>
