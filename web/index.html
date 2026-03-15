@@ -66,7 +66,7 @@
     <div class="timer" id="timer"></div>
   </div>
 
-  <div class="section-title ip-hidden" id="resultsTitle">流媒体 &amp; AI 服务</div>
+  <div class="section-title" id="resultsTitle">流媒体 &amp; AI 服务</div>
   <div class="results" id="results"></div>
 
   <div class="footer">
@@ -295,7 +295,6 @@ async function runAll(){
   const tick = setInterval(()=>{ timerEl.textContent = ((Date.now()-t0)/1000).toFixed(1)+'s'; }, 100);
 
   renderInitial();
-  document.getElementById('resultsTitle').classList.remove('ip-hidden');
 
   // Run all service tests in parallel (IP already loaded on page open)
   const promises = SERVICES.map(async s => {
@@ -317,8 +316,9 @@ async function runAll(){
   running = false;
 }
 
-// ── Page load: immediately detect IP ─────────────────
+// ── Page load: immediately detect IP + show service list ─
 detectIP();
+renderInitial();
 </script>
 </body>
 </html>
