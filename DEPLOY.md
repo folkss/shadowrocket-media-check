@@ -78,9 +78,17 @@ https://folkss.github.io/shadowrocket-media-check/?api=https%3A%2F%2Fmedia-unloc
 ## 使用方法
 
 1. iPhone 上切好 Shadowrocket 节点
-2. 打开上面的前端检测页
+2. 打开前端检测页（如果你已经把根目录 `index.html` 发布到 GitHub Pages，则可直接打开 Pages 地址）
 3. 点“开始检测”
 4. 查看结果
+
+### 当前已部署的 Worker
+
+```text
+https://media-unlock-check.amdceo.workers.dev/check
+```
+
+如果前端默认已经写入这个地址，则无需再手动拼 `?api=` 参数。
 
 ---
 
