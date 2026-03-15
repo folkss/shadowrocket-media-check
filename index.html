@@ -1,76 +1,399 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Media Unlock Check</title>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+  <title>节点解锁检测</title>
   <style>
-    body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text",Helvetica,Arial,sans-serif;background:#0b0d12;color:#eef2f7;margin:0;padding:20px}
-    .wrap{max-width:860px;margin:0 auto}
-    .card{background:#141824;border:1px solid #293042;border-radius:16px;padding:18px 18px 14px;box-shadow:0 12px 30px rgba(0,0,0,.25)}
-    h1{margin:0 0 10px;font-size:24px}
-    p{color:#a8b0c0;line-height:1.6}
-    .bar{display:flex;gap:10px;flex-wrap:wrap;margin:14px 0 18px}
-    button{background:#4f7cff;color:#fff;border:0;border-radius:12px;padding:12px 16px;font-size:15px;font-weight:600}
-    button.secondary{background:#222838}
-    .grid{display:grid;grid-template-columns:1fr;gap:12px}
-    .item{background:#0f1320;border:1px solid #22283a;border-radius:14px;padding:14px}
-    .name{font-weight:700;font-size:16px}
-    .status{margin-top:6px;font-size:15px;white-space:pre-wrap}
-    .muted{color:#9aa4b2}
-    .ok{color:#5dd39e}.warn{color:#ffd166}.bad{color:#ff6b6b}.dim{color:#8b93a7}
-    code{background:#0b0d12;padding:2px 6px;border-radius:6px}
+    *{margin:0;padding:0;box-sizing:border-box}
+    body{font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","SF Pro Text",system-ui,sans-serif;background:#0a0e17;color:#e4e8f1;min-height:100vh;padding:16px}
+    .wrap{max-width:520px;margin:0 auto}
+
+    /* Header */
+    .header{text-align:center;padding:24px 0 8px}
+    .header h1{font-size:22px;font-weight:700;letter-spacing:-.3px}
+    .header p{color:#7a8494;font-size:13px;margin-top:6px;line-height:1.5}
+
+    /* IP Card */
+    .ip-card{background:linear-gradient(135deg,#151b2e 0%,#1a2240 100%);border:1px solid #252d45;border-radius:16px;padding:20px;margin:16px 0;position:relative;overflow:hidden}
+    .ip-card::before{content:'';position:absolute;top:-40px;right:-40px;width:120px;height:120px;background:radial-gradient(circle,rgba(79,124,255,.12) 0%,transparent 70%);border-radius:50%}
+    .ip-label{font-size:11px;color:#6b7280;text-transform:uppercase;letter-spacing:1px;font-weight:600}
+    .ip-value{font-size:26px;font-weight:700;margin:6px 0;font-variant-numeric:tabular-nums;word-break:break-all}
+    .ip-geo{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+    .ip-tag{background:#1e2642;border:1px solid #2a3458;border-radius:8px;padding:4px 10px;font-size:12px;color:#9aa4b8}
+    .ip-tag .val{color:#e4e8f1;font-weight:600}
+    .ip-tag.dc{border-color:#6b3a3a;background:#2a1a1e;color:#f0a0a0}
+    .ip-tag.res{border-color:#2a5a3a;background:#1a2a1e;color:#80d0a0}
+
+    /* Action */
+    .action{text-align:center;margin:16px 0}
+    .btn{display:inline-flex;align-items:center;gap:8px;background:#4f7cff;color:#fff;border:0;border-radius:14px;padding:14px 28px;font-size:15px;font-weight:600;cursor:pointer;transition:all .15s;-webkit-tap-highlight-color:transparent}
+    .btn:active{transform:scale(.97);opacity:.9}
+    .btn:disabled{opacity:.5;cursor:default;transform:none}
+    .btn svg{width:18px;height:18px;fill:currentColor}
+    .timer{color:#6b7280;font-size:12px;margin-top:8px}
+
+    /* Results */
+    .section-title{font-size:13px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:.8px;margin:20px 0 10px;padding-left:4px}
+    .results{display:flex;flex-direction:column;gap:10px}
+    .item{background:#12172a;border:1px solid #1e2642;border-radius:14px;padding:14px 16px;display:flex;align-items:center;gap:12px;transition:border-color .2s}
+    .item.ok{border-color:#2a5a3a}
+    .item.warn{border-color:#5a4a2a}
+    .item.bad{border-color:#5a2a2a}
+    .item .icon{width:36px;height:36px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0;background:#1a2040}
+    .item.ok .icon{background:#1a2a1e}
+    .item.warn .icon{background:#2a2618}
+    .item.bad .icon{background:#2a1a1e}
+    .item .info{flex:1;min-width:0}
+    .item .name{font-size:14px;font-weight:600}
+    .item .detail{font-size:12px;margin-top:2px;color:#7a8494;line-height:1.4}
+    .item .badge{font-size:11px;font-weight:600;padding:3px 8px;border-radius:6px;white-space:nowrap;flex-shrink:0}
+    .item.ok .badge{background:#1a2e1e;color:#5dd39e}
+    .item.warn .badge{background:#2e2a1a;color:#ffd166}
+    .item.bad .badge{background:#2e1a1a;color:#ff6b6b}
+    .item.loading .badge{background:#1a2040;color:#6b7280}
+
+    /* Footer */
+    .footer{text-align:center;padding:24px 0;color:#4a5268;font-size:11px;line-height:1.6}
+    .footer a{color:#4f7cff;text-decoration:none}
+
+    /* Skeleton */
+    .skeleton .ip-value{background:#1e2642;color:transparent;border-radius:8px;display:inline-block;width:200px;height:30px}
+    .skeleton .ip-tag .val{background:#1e2642;color:transparent;border-radius:4px;display:inline-block;width:40px}
+
+    @media(prefers-color-scheme:light){
+      /* keep dark — this is a tool page */
+    }
   </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="card">
-    <h1>📺 流媒体 / AI 服务检测页</h1>
-    <p>先在 iPhone 上切好 Shadowrocket 节点，再点 <b>开始检测</b>。结果反映的是你当前节点出口能力。</p>
-    <p class="muted">后端接口：<span id="backend"></span></p>
-    <div class="bar">
-      <button id="runBtn">开始检测</button>
-      <button class="secondary" id="copyBtn">复制接口地址</button>
-    </div>
-    <div id="summary" class="muted">等待检测…</div>
+  <div class="header">
+    <h1>🌐 节点解锁检测</h1>
+    <p>检测你当前代理节点的出口 IP 和流媒体可达性。<br>所有请求由浏览器直接发出，走你当前的代理线路。</p>
   </div>
-  <div style="height:14px"></div>
-  <div class="grid" id="results"></div>
+
+  <div class="ip-card skeleton" id="ipCard">
+    <div class="ip-label">当前出口 IP</div>
+    <div class="ip-value" id="ipAddr">检测中…</div>
+    <div class="ip-geo" id="ipGeo">
+      <span class="ip-tag"><span class="val">&nbsp;</span></span>
+    </div>
+  </div>
+
+  <div class="action">
+    <button class="btn" id="runBtn" onclick="runAll()">
+      <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+      开始检测
+    </button>
+    <div class="timer" id="timer"></div>
+  </div>
+
+  <div class="section-title">流媒体 &amp; AI 服务</div>
+  <div class="results" id="results"></div>
+
+  <div class="footer">
+    纯前端检测 · 无后端 · 所有请求走你的代理出口<br>
+    <span style="color:#5a6278">⚠️ 受浏览器跨域限制，部分平台只能检测可达性，无法区分解锁细节</span>
+  </div>
 </div>
+
 <script>
-const DEFAULT_API = 'https://media-unlock-check.amdceo.workers.dev/check';
-const params = new URLSearchParams(location.search);
-const api = params.get('api') || DEFAULT_API;
-document.getElementById('backend').textContent = api;
-const order = ['YouTube Premium','Netflix','Disney+','DAZN','Paramount+','Discovery+','ChatGPT'];
-const mapClass = s => s==='available' ? 'ok' : s==='partial' || s==='coming' ? 'warn' : s==='not_available' || s==='error' || s==='timeout' ? 'bad' : 'dim';
-function render(data){
-  const results = document.getElementById('results');
-  results.innerHTML = '';
-  const items = (data && data.items) || {};
-  order.forEach(name => {
-    const item = items[name] || {text: name + ': 未返回结果', status:'unknown'};
-    const div = document.createElement('div');
-    div.className='item';
-    div.innerHTML = `<div class="name">${name}</div><div class="status ${mapClass(item.status)}">${item.text}</div>`;
-    results.appendChild(div);
-  });
-  document.getElementById('summary').textContent = data && data.generatedAt ? `检测完成：${data.generatedAt}` : '检测完成';
-}
-async function run(){
-  document.getElementById('summary').textContent = '检测中，请稍等…';
-  try{
-    const r = await fetch(api, {method:'GET', headers:{'accept':'application/json'}});
-    const j = await r.json();
-    render(j);
-  }catch(err){
-    document.getElementById('summary').textContent = '检测失败：' + err;
+// ── Config ──────────────────────────────────────────
+const SERVICES = [
+  { key:'chatgpt',  name:'ChatGPT',          icon:'🤖', test:testChatGPT },
+  { key:'youtube',  name:'YouTube Premium',   icon:'▶️', test:testYouTube },
+  { key:'netflix',  name:'Netflix',           icon:'🎬', test:testNetflix },
+  { key:'disney',   name:'Disney+',           icon:'🏰', test:testDisney },
+  { key:'spotify',  name:'Spotify',           icon:'🎵', test:testSpotify },
+  { key:'tiktok',   name:'TikTok',            icon:'🎵', test:testTikTok },
+  { key:'dazn',     name:'DAZN',              icon:'⚽', test:testDAZN },
+  { key:'paramount',name:'Paramount+',        icon:'⛰️', test:testParamount },
+];
+
+const FLAGS = {'AE':'🇦🇪','AR':'🇦🇷','AU':'🇦🇺','BR':'🇧🇷','CA':'🇨🇦','CH':'🇨🇭','CN':'🇨🇳','DE':'🇩🇪','DK':'🇩🇰','ES':'🇪🇸','FI':'🇫🇮','FR':'🇫🇷','GB':'🇬🇧','HK':'🇭🇰','ID':'🇮🇩','IE':'🇮🇪','IN':'🇮🇳','IT':'🇮🇹','JP':'🇯🇵','KR':'🇰🇷','MX':'🇲🇽','MY':'🇲🇾','NL':'🇳🇱','NO':'🇳🇴','NZ':'🇳🇿','PH':'🇵🇭','PL':'🇵🇱','PT':'🇵🇹','RU':'🇷🇺','SA':'🇸🇦','SE':'🇸🇪','SG':'🇸🇬','TH':'🇹🇭','TR':'🇹🇷','TW':'🇹🇼','UA':'🇺🇦','US':'🇺🇸','VN':'🇻🇳','ZA':'🇿🇦'};
+function flag(cc){ return cc ? (FLAGS[cc.toUpperCase()] || '🏳️') : ''; }
+
+// ── IP Detection ────────────────────────────────────
+async function detectIP(){
+  const card = document.getElementById('ipCard');
+  const ipEl = document.getElementById('ipAddr');
+  const geoEl = document.getElementById('ipGeo');
+
+  try {
+    // ip-api.com supports CORS on http (not https on free tier)
+    const r = await fetch('http://ip-api.com/json/?fields=status,query,country,countryCode,regionName,city,isp,as,hosting&lang=zh-CN', {cache:'no-store'});
+    const d = await r.json();
+    if(d.status !== 'success') throw new Error('ip-api failed');
+
+    card.classList.remove('skeleton');
+    ipEl.textContent = d.query;
+
+    let tags = [];
+    tags.push(`<span class="ip-tag">${flag(d.countryCode)} <span class="val">${d.country}</span></span>`);
+    if(d.city) tags.push(`<span class="ip-tag">📍 <span class="val">${d.city}</span></span>`);
+    if(d.isp) tags.push(`<span class="ip-tag">🏢 <span class="val">${d.isp}</span></span>`);
+    if(d.as) tags.push(`<span class="ip-tag">🔗 <span class="val">${d.as.split(' ')[0]}</span></span>`);
+    // hosting flag: true = datacenter IP, false = residential
+    if(d.hosting === true) {
+      tags.push(`<span class="ip-tag dc">⚠️ 机房 IP</span>`);
+    } else if(d.hosting === false) {
+      tags.push(`<span class="ip-tag res">✅ 住宅 IP</span>`);
+    }
+    geoEl.innerHTML = tags.join('');
+
+    return { ip: d.query, cc: d.countryCode, country: d.country, city: d.city, isp: d.isp, hosting: d.hosting };
+  } catch(e) {
+    // Fallback: use Cloudflare trace
+    try {
+      const r2 = await fetch('https://1.1.1.1/cdn-cgi/trace', {cache:'no-store'});
+      const txt = await r2.text();
+      const ip = (txt.match(/ip=(.+)/)||[])[1]||'';
+      const loc = (txt.match(/loc=([A-Z]{2})/)||[])[1]||'';
+      card.classList.remove('skeleton');
+      ipEl.textContent = ip || '未知';
+      geoEl.innerHTML = loc ? `<span class="ip-tag">${flag(loc)} <span class="val">${loc}</span></span>` : '';
+      return { ip, cc: loc };
+    } catch(e2) {
+      card.classList.remove('skeleton');
+      ipEl.textContent = '检测失败';
+      geoEl.innerHTML = '';
+      return {};
+    }
   }
 }
-document.getElementById('runBtn').onclick = run;
-document.getElementById('copyBtn').onclick = async()=>{
-  try{ await navigator.clipboard.writeText(api); alert('已复制'); }catch(e){ alert(api); }
-};
+
+// ── Helpers ──────────────────────────────────────────
+function timeout(ms){ return new Promise((_,rej)=>setTimeout(()=>rej(new Error('timeout')),ms)); }
+
+async function imgProbe(url, ms=8000){
+  return new Promise(resolve=>{
+    const img = new Image();
+    const timer = setTimeout(()=>{ img.src=''; resolve(false); }, ms);
+    img.onload = ()=>{ clearTimeout(timer); resolve(true); };
+    img.onerror = ()=>{ clearTimeout(timer); resolve(false); };
+    img.src = url;
+  });
+}
+
+async function fetchText(url, ms=8000){
+  const ctrl = new AbortController();
+  const timer = setTimeout(()=>ctrl.abort(), ms);
+  try {
+    const r = await fetch(url, { signal: ctrl.signal, cache:'no-store' });
+    const t = await r.text();
+    return { ok:true, status:r.status, body:t };
+  } catch(e) {
+    return { ok:false, error:String(e) };
+  } finally { clearTimeout(timer); }
+}
+
+async function fetchNoCorsSafe(url, ms=8000){
+  const ctrl = new AbortController();
+  const timer = setTimeout(()=>ctrl.abort(), ms);
+  try {
+    const r = await fetch(url, { mode:'no-cors', signal:ctrl.signal, cache:'no-store' });
+    // no-cors: if we get here without error, the request completed (opaque response)
+    return { reachable: true };
+  } catch(e) {
+    return { reachable: false, error: String(e) };
+  } finally { clearTimeout(timer); }
+}
+
+// ── Service Tests ───────────────────────────────────
+// Each returns { status: 'ok'|'warn'|'bad'|'unknown', badge: string, detail: string }
+
+async function testChatGPT(){
+  try {
+    const res = await fetchText('https://chatgpt.com/cdn-cgi/trace', 8000);
+    if(!res.ok) return { status:'bad', badge:'不可达', detail:'无法连接到 ChatGPT' };
+
+    const loc = (res.body.match(/loc=([A-Z]{2})/)||[])[1]||'';
+
+    // OpenAI blocked regions
+    const blocked = new Set(['CN','RU','KP','IR','CU','SY','BY']);
+    if(blocked.has(loc)){
+      return { status:'bad', badge:'不可用', detail:`出口地区 ${flag(loc)} ${loc} 在 OpenAI 封禁名单内` };
+    }
+    if(loc){
+      return { status:'ok', badge:'可用', detail:`出口地区 ${flag(loc)} ${loc}` };
+    }
+    return { status:'warn', badge:'可达', detail:'已连通，但未检测到地区信息' };
+  } catch(e) {
+    return { status:'bad', badge:'失败', detail:'检测异常' };
+  }
+}
+
+async function testYouTube(){
+  try {
+    // Try fetching YouTube premium page - it's usually accessible
+    const probe = await fetchNoCorsSafe('https://www.youtube.com/premium', 8000);
+    if(!probe.reachable) return { status:'bad', badge:'不可达', detail:'无法连接到 YouTube' };
+
+    // Try to get region from YouTube's public oEmbed endpoint (supports CORS in some cases)
+    try {
+      const oembed = await fetchText('https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=dQw4w9WgXcQ&format=json', 6000);
+      if(oembed.ok && oembed.status === 200){
+        return { status:'ok', badge:'可达', detail:'YouTube 可正常访问' };
+      }
+    } catch(e){}
+
+    return { status:'ok', badge:'可达', detail:'YouTube 可正常访问（Premium 状态需登录确认）' };
+  } catch(e) {
+    return { status:'bad', badge:'失败', detail:'检测异常' };
+  }
+}
+
+async function testNetflix(){
+  try {
+    // Netflix blocks cross-origin reads, but we can detect basic reachability
+    const probe = await fetchNoCorsSafe('https://www.netflix.com/', 8000);
+    if(!probe.reachable) return { status:'bad', badge:'不可达', detail:'无法连接到 Netflix（DNS 污染或 IP 被封）' };
+
+    // Also try an image/resource
+    const img = await imgProbe('https://assets.nflxext.com/us/ffe/siteui/common/icons/nficon2023.ico', 6000);
+    if(img){
+      return { status:'ok', badge:'可达', detail:'Netflix 可连通（具体解锁情况需打开 Netflix 确认）' };
+    }
+    return { status:'warn', badge:'部分可达', detail:'Netflix 域名可连通，但资源加载异常' };
+  } catch(e) {
+    return { status:'bad', badge:'失败', detail:'检测异常' };
+  }
+}
+
+async function testDisney(){
+  try {
+    const probe = await fetchNoCorsSafe('https://www.disneyplus.com/', 8000);
+    if(!probe.reachable) return { status:'bad', badge:'不可达', detail:'无法连接到 Disney+' };
+
+    const img = await imgProbe('https://cnbl-cdn.bamgrid.com/assets/7ecc8bcb-60ee-4b56-b105-fe28891a2c2b/original', 6000);
+    if(img){
+      return { status:'ok', badge:'可达', detail:'Disney+ 可连通（具体解锁需打开 Disney+ 确认）' };
+    }
+    return { status:'warn', badge:'部分可达', detail:'Disney+ 域名可连通，但资源加载异常' };
+  } catch(e) {
+    return { status:'bad', badge:'失败', detail:'检测异常' };
+  }
+}
+
+async function testSpotify(){
+  try {
+    const probe = await fetchNoCorsSafe('https://www.spotify.com/', 8000);
+    if(!probe.reachable) return { status:'bad', badge:'不可达', detail:'无法连接到 Spotify' };
+    return { status:'ok', badge:'可达', detail:'Spotify 可正常访问' };
+  } catch(e) {
+    return { status:'bad', badge:'失败', detail:'检测异常' };
+  }
+}
+
+async function testTikTok(){
+  try {
+    const probe = await fetchNoCorsSafe('https://www.tiktok.com/', 8000);
+    if(!probe.reachable) return { status:'bad', badge:'不可达', detail:'无法连接到 TikTok' };
+    return { status:'ok', badge:'可达', detail:'TikTok 可正常访问' };
+  } catch(e) {
+    return { status:'bad', badge:'失败', detail:'检测异常' };
+  }
+}
+
+async function testDAZN(){
+  try {
+    const probe = await fetchNoCorsSafe('https://www.dazn.com/', 8000);
+    if(!probe.reachable) return { status:'bad', badge:'不可达', detail:'无法连接到 DAZN' };
+    return { status:'ok', badge:'可达', detail:'DAZN 可正常访问' };
+  } catch(e) {
+    return { status:'bad', badge:'失败', detail:'检测异常' };
+  }
+}
+
+async function testParamount(){
+  try {
+    const probe = await fetchNoCorsSafe('https://www.paramountplus.com/', 8000);
+    if(!probe.reachable) return { status:'bad', badge:'不可达', detail:'无法连接到 Paramount+' };
+    return { status:'ok', badge:'可达', detail:'Paramount+ 可正常访问' };
+  } catch(e) {
+    return { status:'bad', badge:'失败', detail:'检测异常' };
+  }
+}
+
+// ── Render ───────────────────────────────────────────
+const resultsEl = document.getElementById('results');
+
+function renderInitial(){
+  resultsEl.innerHTML = SERVICES.map(s =>
+    `<div class="item loading" id="item-${s.key}">
+      <div class="icon">${s.icon}</div>
+      <div class="info">
+        <div class="name">${s.name}</div>
+        <div class="detail">等待检测</div>
+      </div>
+      <div class="badge">—</div>
+    </div>`
+  ).join('');
+}
+
+function renderResult(key, result){
+  const el = document.getElementById('item-'+key);
+  if(!el) return;
+  el.className = 'item ' + (result.status === 'ok' ? 'ok' : result.status === 'warn' ? 'warn' : result.status === 'bad' ? 'bad' : '');
+  el.querySelector('.badge').textContent = result.badge;
+  el.querySelector('.detail').textContent = result.detail;
+}
+
+function renderLoading(key){
+  const el = document.getElementById('item-'+key);
+  if(!el) return;
+  el.className = 'item loading';
+  el.querySelector('.badge').textContent = '检测中…';
+  el.querySelector('.detail').textContent = '正在测试…';
+}
+
+// ── Main ─────────────────────────────────────────────
+let running = false;
+
+async function runAll(){
+  if(running) return;
+  running = true;
+  const btn = document.getElementById('runBtn');
+  const timerEl = document.getElementById('timer');
+  btn.disabled = true;
+  btn.innerHTML = '<svg viewBox="0 0 24 24" style="animation:spin 1s linear infinite"><path d="M12 2a10 10 0 0 0 0 20 10 10 0 0 0 0-20zm0 18a8 8 0 1 1 0-16 8 8 0 0 1 0 16z" opacity=".3"/><path d="M12 2a10 10 0 0 1 10 10h-2a8 8 0 0 0-8-8V2z"/></svg> 检测中…';
+
+  const t0 = Date.now();
+  const tick = setInterval(()=>{ timerEl.textContent = ((Date.now()-t0)/1000).toFixed(1)+'s'; }, 100);
+
+  renderInitial();
+
+  // 1. IP detection first
+  await detectIP();
+
+  // 2. Run all service tests in parallel
+  const promises = SERVICES.map(async s => {
+    renderLoading(s.key);
+    try {
+      const result = await s.test();
+      renderResult(s.key, result);
+    } catch(e) {
+      renderResult(s.key, { status:'bad', badge:'异常', detail:String(e) });
+    }
+  });
+
+  await Promise.all(promises);
+
+  clearInterval(tick);
+  timerEl.textContent = `完成，耗时 ${((Date.now()-t0)/1000).toFixed(1)}s`;
+  btn.disabled = false;
+  btn.innerHTML = '<svg viewBox="0 0 24 24"><path d="M17.65 6.35A7.958 7.958 0 0 0 12 4a8 8 0 1 0 8 8h-2a6 6 0 1 1-1.76-4.24l-2.74 2.74H20V4l-2.35 2.35z"/></svg> 重新检测';
+  running = false;
+}
+
+// Add spin animation
+const style = document.createElement('style');
+style.textContent = '@keyframes spin{to{transform:rotate(360deg)}}';
+document.head.appendChild(style);
+
+// Init
+renderInitial();
 </script>
 </body>
 </html>
